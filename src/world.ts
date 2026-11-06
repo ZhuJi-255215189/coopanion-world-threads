@@ -169,6 +169,11 @@ export class ThreadsWorld implements World {
   private seq = 0;
   private host: WorldHost | null = null;
   private saveTimer: NodeJS.Timeout | null = null;
+  /** 读档与补保底是否已完成。start() 本身只做赋值，避免任何同步 I/O 卡住挂载。 */
+  private ready = false;
+  private initError: string | null = null;
+  /** 每次 start/stop 递增；延迟初始化用它作废旧代次。 */
+  private generation = 0;
 
   constructor(opts: ThreadsWorldOptions) {
     this.rawCfg = opts.cfg;
@@ -185,16 +190,33 @@ export class ThreadsWorld implements World {
   // ── World 契约 ──────────────────────────────────────────────────────────
 
   envPromptVars(): Record<string, string> {
-    return { 'threads.status': this.statusLine() };
+    // 前缀构建期间抛错会让 Core 卸载整个 World；这里任何情况都只返回文字。
+    try {
+      return { 'threads.status': this.statusLine() };
+    } catch (error) {
+      this.host?.log.warn('多线程：读取状态失败', { error: error instanceof Error ? error.message : String(error) });
+      return { 'threads.status': '线程池状态暂不可用。' };
+    }
   }
 
   tools(): ToolDef[] {
     const [ask, tell, list, stop] = THREADS_TOOL_SPECS;
+    // 单个工具失败只回失败回执，不把异常抛回主循环。
+    const guard = (name: string, fn: (args: Record<string, unknown>) => string): ToolDef['handler'] =>
+      async (args) => {
+        try {
+          return fn(args);
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          this.host?.log.error(`多线程：工具 ${name} 出错`, { error: detail });
+          return { text: `${name} 出错：${detail}`, failed: true };
+        }
+      };
     return [
-      { ...ask, handler: async (args) => this.toolAsk(args) },
-      { ...tell, handler: async (args) => this.toolTell(args) },
-      { ...list, handler: async () => this.toolList() },
-      { ...stop, handler: async (args) => this.toolStop(args) },
+      { ...ask, handler: guard('thread_ask', (args) => this.toolAsk(args)) },
+      { ...tell, handler: guard('thread_tell', (args) => this.toolTell(args)) },
+      { ...list, handler: guard('thread_list', () => this.toolList()) },
+      { ...stop, handler: guard('thread_stop', (args) => this.toolStop(args)) },
     ];
   }
 
@@ -248,24 +270,70 @@ export class ThreadsWorld implements World {
 
   async start(host: WorldHost): Promise<void> {
     this.host = host;
+    const generation = ++this.generation;
+    this.ready = false;
+    this.initError = null;
     this.pool.clear();
     this.threads.clear();
     this.seq = 0;
-    this.load();
-    this.syncPool();
-    this.ensureReserve();
+    try {
+      host.log.info('多线程：World 启动', { state: this.stateFile });
+    } catch {
+      /* 日志失败不影响启动 */
+    }
+    // start() 立即返回：读档与补保底放到微任务，避免同步 I/O 或补线程卡住挂载。
+    queueMicrotask(() => {
+      if (generation !== this.generation || this.host !== host) return;
+      this.initialize(generation);
+    });
+  }
+
+  private initialize(generation: number): void {
+    try {
+      this.load();
+      if (generation !== this.generation) return;
+      this.syncPool();
+      this.ensureReserve();
+      this.ready = true;
+      const counts = this.pool.counts;
+      this.host?.log.info('多线程：线程池已就绪', {
+        threads: counts.size, idle: counts.idle, max: counts.max, state: this.stateFile,
+      });
+    } catch (error) {
+      this.initError = error instanceof Error ? error.message : String(error);
+      this.ready = false;
+      this.host?.log.error('多线程：初始化失败', { err: error });
+    }
   }
 
   async stop(): Promise<void> {
+    this.generation++;
+    this.ready = false;
+    const host = this.host;
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
     // 先留档再作废：停掉 World 不该把线程历史一起清掉，下次挂载还要接得上。
-    this.saveNow();
-    for (const thread of this.threads.values()) thread.dispose();
+    try {
+      this.saveNow();
+    } catch (error) {
+      host?.log.warn('多线程：停止时存档失败', { error: error instanceof Error ? error.message : String(error) });
+    }
+    for (const thread of this.threads.values()) {
+      try {
+        thread.dispose();
+      } catch (error) {
+        host?.log.warn('多线程：停止线程失败', { thread: thread.id, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
     this.threads.clear();
     this.pool.clear();
+    try {
+      host?.log.info('多线程：World 停止');
+    } catch {
+      /* ignore */
+    }
     this.host = null;
   }
 
@@ -273,6 +341,11 @@ export class ThreadsWorld implements World {
 
   private toolAsk(args: Record<string, unknown>): string {
     if (!this.host) return '线程池还没启动（World 未挂载）。';
+    if (!this.ready) {
+      return this.initError
+        ? `线程池初始化失败：${this.initError}。可以看 core.log 里「多线程：初始化失败」那行。`
+        : '线程池正在启动，请过一两秒再试。';
+    }
     const text = typeof args.text === 'string' ? args.text.trim() : '';
     if (!text) return 'thread_ask 需要 text：要做什么。';
     if (text.length > TASK_MAX) return `任务太长了（${text.length} 字符），请压缩到 ${TASK_MAX} 以内，或先写进文件再让线程读。`;
@@ -291,6 +364,7 @@ export class ThreadsWorld implements World {
     thread.start(text, title);
     this.ensureReserve();
     this.saveSoon();
+    this.host.log.debug('多线程：派活', { thread: thread.id, title, plan: plan.kind });
     return `已交给 ${thread.id}（${plan.kind === 'reuse' ? '复用了空闲线程' : '新开了一条线程'}），标题「${title}」。池子：${this.pool.counts.running} 忙 / ${this.pool.counts.idle} 闲 / 上限 ${cfg.maxThreads}，排队 ${this.pool.counts.queued}。完成后会有回报。`;
   }
 
@@ -316,6 +390,9 @@ export class ThreadsWorld implements World {
   }
 
   private toolList(): string {
+    if (!this.ready) {
+      return this.initError ? `线程池初始化失败：${this.initError}` : '线程池正在启动，请过一两秒再试。';
+    }
     const counts = this.pool.counts;
     const head = `线程池 ${counts.size}/${counts.max}（保底 ${counts.reserve} 空闲）：${counts.running} 忙 / ${counts.idle} 闲 / ${counts.queued} 排队。`;
     const lines = [...this.threads.values()].map((thread) => {
@@ -345,7 +422,10 @@ export class ThreadsWorld implements World {
   // ── 线程生命周期 ────────────────────────────────────────────────────────
 
   private spawnThread(): Thread {
-    return this.threadFor(`t${++this.seq}`);
+    const id = `t${++this.seq}`;
+    const thread = this.threadFor(id);
+    this.host?.log.debug('多线程：开线程', { thread: id });
+    return thread;
   }
 
   private threadFor(id: string): Thread {
@@ -365,16 +445,40 @@ export class ThreadsWorld implements World {
     this.pool.setOptions({ maxThreads: cfg.maxThreads, reserveIdle: cfg.reserveIdle, onFull: cfg.onFull });
   }
 
-  /** 把空闲保底补齐；受上限限制，补不出来就算了。 */
+  /** 把空闲保底补齐；受上限限制，补不出来就算了。任何一条开不出来都只记日志，不让调用方炸。 */
   private ensureReserve(): void {
-    this.syncPool();
-    for (let i = 0; i < 9 && this.pool.deficit() > 0; i++) this.spawnThread();
+    try {
+      this.syncPool();
+    } catch (error) {
+      this.host?.log.error('多线程：读取配置失败，补保底跳过', { err: error });
+      return;
+    }
+    for (let i = 0; i < 9 && this.pool.deficit() > 0; i++) {
+      try {
+        this.spawnThread();
+      } catch (error) {
+        this.host?.log.error('多线程：补保底线程失败', { err: error });
+        return;
+      }
+    }
   }
 
   private onIdle(thread: Thread): void {
-    this.pool.release(thread.id);
-    this.dispatchQueue();
-    this.ensureReserve();
+    try {
+      this.pool.release(thread.id);
+    } catch (error) {
+      this.host?.log.warn('多线程：线程回收失败', { thread: thread.id, err: error });
+    }
+    try {
+      this.dispatchQueue();
+    } catch (error) {
+      this.host?.log.error('多线程：派发排队任务失败', { err: error });
+    }
+    try {
+      this.ensureReserve();
+    } catch (error) {
+      this.host?.log.error('多线程：补保底失败', { err: error });
+    }
     this.saveSoon();
   }
 
@@ -386,13 +490,20 @@ export class ThreadsWorld implements World {
       if (plan.kind === 'queue') return;
       const task = this.pool.dequeue();
       if (!task) return;
-      const thread = plan.kind === 'reuse' ? this.threads.get(plan.threadId) : this.spawnThread();
-      if (!thread) {
+      try {
+        const thread = plan.kind === 'reuse' ? this.threads.get(plan.threadId) : this.spawnThread();
+        if (!thread) {
+          this.pool.enqueue(task);
+          return;
+        }
+        this.pool.assign(thread.id);
+        thread.start(task.text, task.title);
+        this.host?.log.debug('多线程：排队任务开工', { thread: thread.id, title: task.title });
+      } catch (error) {
         this.pool.enqueue(task);
+        this.host?.log.error('多线程：排队任务开工失败', { err: error });
         return;
       }
-      this.pool.assign(thread.id);
-      thread.start(task.text, task.title);
       this.ensureReserve();
     }
   }
@@ -421,6 +532,7 @@ export class ThreadsWorld implements World {
 
   private async onReply(thread: Thread, reply: string, input: string): Promise<void> {
     this.saveSoon();
+    this.host?.log.info('多线程：线程完成', { thread: thread.id, title: thread.title, chars: reply.length });
     const text = `[后台线程 ${thread.id} 完成] ${thread.title}\n${clip(reply, REPORT_MAX)}`;
     await this.push(THREADS_REPORT, text, {
       thread: thread.id,
@@ -432,6 +544,7 @@ export class ThreadsWorld implements World {
 
   private async onError(thread: Thread, error: Error, input: string): Promise<void> {
     this.saveSoon();
+    this.host?.log.warn('多线程：线程失败', { thread: thread.id, title: thread.title, error: error.message });
     const text = `[后台线程 ${thread.id} 失败] ${thread.title}\n原因：${clip(error.message, 500)}`;
     await this.push(THREADS_ERROR, text, {
       thread: thread.id,
@@ -489,6 +602,8 @@ export class ThreadsWorld implements World {
   // ── 面板 ────────────────────────────────────────────────────────────────
 
   private statusLine(): string {
+    if (this.initError) return `线程池初始化失败：${clip(this.initError, 120)}`;
+    if (!this.ready) return '线程池正在启动…';
     const counts = this.pool.counts;
     return `线程池 ${counts.size}/${counts.max}：${counts.running} 条在忙，${counts.idle} 条空闲（保底 ${counts.reserve}），${counts.queued} 件排队。`;
   }
@@ -499,6 +614,8 @@ export class ThreadsWorld implements World {
     return {
       at: nowIso(),
       botName: this.botName,
+      ready: this.ready,
+      ...(this.initError ? { initError: this.initError } : {}),
       pool: { ...counts, onFull: cfg.onFull },
       threads: [...this.threads.values()].map((thread) => thread.snapshot()),
       queue: this.pool.peekQueue(20).map((task, index) => ({ position: index + 1, title: task.title, text: clip(task.text, 90) })),
@@ -531,10 +648,17 @@ export class ThreadsWorld implements World {
 
   private load(): void {
     try {
-      if (!existsSync(this.stateFile)) return;
+      if (!existsSync(this.stateFile)) {
+        this.host?.log.info('多线程：没有线程存档，从空池开始', { state: this.stateFile });
+        return;
+      }
       const raw = JSON.parse(readFileSync(this.stateFile, 'utf8')) as Partial<StoredState>;
-      if (!raw || raw.version !== 1 || !Array.isArray(raw.threads)) return;
+      if (!raw || raw.version !== 1 || !Array.isArray(raw.threads)) {
+        this.host?.log.warn('多线程：线程存档格式不认识，从空池开始', { state: this.stateFile });
+        return;
+      }
       this.seq = Math.max(0, Math.floor(Number(raw.seq) || 0));
+      let restored = 0;
       for (const item of raw.threads) {
         if (!item || typeof item.id !== 'string' || !/^t\d+$/.test(item.id) || this.threads.has(item.id)) continue;
         const history = Array.isArray(item.history)
@@ -546,7 +670,9 @@ export class ThreadsWorld implements World {
         thread.lastReply = typeof item.lastReply === 'string' ? item.lastReply : '';
         const numeric = Number(/^t(\d+)$/.exec(item.id)?.[1] ?? 0);
         if (Number.isFinite(numeric)) this.seq = Math.max(this.seq, numeric);
+        restored++;
       }
+      this.host?.log.info('多线程：线程存档已读回', { threads: restored, state: this.stateFile });
     } catch (error) {
       this.host?.log.warn('多线程：读取线程存档失败，从空池开始', { error: error instanceof Error ? error.message : String(error) });
     }

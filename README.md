@@ -123,6 +123,13 @@ $env:COOPANION_APP = $App
 & $Exe --import tsx --import "file:///$($App -replace '\\','/')/build/cortico/src/extensions/runtime.ts" "$Repo\scripts\e2e.mjs"
 ```
 
+## 启用时机与排障
+
+- 扩展页里的 `enabled` 是「已挂载」，`config.json` 的 `worlds.threads.enabled` 才是开关；`declared:false` 对扩展 World 是正常的（bot 只声明它自己的渠道，扩展 World 都是选配）。
+- 在 App **运行中**打开开关，会走 `Core.mountWorld()`：先 `start()`，再重建 system 前缀。重建要等当前这一批（模型轮、工具、CUA）跑到批末；如果桌宠正在长回合，HTTP 请求可能先超时，日志里要过一会儿才出现 `World 激活状态已改`。这时它往往已经挂上去了，等当前回合结束再看 `/api/worlds`。
+- 想避开这段等待：先把 `worlds.threads.enabled` 设为 `true`，再重启 App；启动时它和别的 World 一起挂载，不经过运行中激活（安装脚本的 `-Enable` 就是做这件事）。
+- 启动日志按顺序应出现：`多线程：World 启动` → `多线程：线程池已就绪` → `World 已启动: threads`。若第二行缺席，`core.log` 里会有 `多线程：初始化失败` 带着原因。
+
 ## 目录
 
 ```

@@ -1,6 +1,6 @@
 {
   "name": "coopanion-world-threads",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Coopanion 多线程 World：让桌宠同时开几条独立的对话/任务线程，始终留一条空闲线程接新消息；一条在干活时另一条能顺便接话。",
   "type": "module",
   "main": "./src/index.ts",

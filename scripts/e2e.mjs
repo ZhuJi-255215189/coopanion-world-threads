@@ -72,6 +72,8 @@ const dataDir = mkdtempSync(join(tmpdir(), 'threads-e2e-'));
 const { world } = worldFor(`http://127.0.0.1:${port}`, dataDir);
 const host = fakeHost();
 await world.start(host);
+// start() 立即返回，读档与补保底在微任务里；等它就绪再派活。
+for (let i = 0; i < 100 && world.snapshot().ready !== true; i++) await sleep(10);
 
 const tool = (name) => world.tools().find((t) => t.name === name);
 const call = async (name, args = {}) => {
