@@ -48,7 +48,7 @@ Write-Host "扩展目录：$ExtensionsDir"
 $store = Join-Path (Join-Path $ExtensionsDir '.local') $packageName
 if (Test-Path -LiteralPath $store) { Remove-Item -LiteralPath $store -Recurse -Force }
 New-Item -ItemType Directory -Path $store -Force | Out-Null
-foreach ($item in @('src', 'dist', 'scripts', 'package.json', 'describe.json', 'README.md', 'DESIGN.md', 'LICENSE')) {
+foreach ($item in @('src', 'dist', 'docs', 'scripts', 'package.json', 'describe.json', 'README.md', 'DESIGN.md', 'CHANGELOG.md', 'LICENSE')) {
   $from = Join-Path $packageRoot $item
   if (Test-Path -LiteralPath $from) {
     Copy-Item -LiteralPath $from -Destination $store -Recurse -Force
