@@ -1,5 +1,8 @@
 # 多线程 · coopanion-world-threads
 
+[![CI](https://github.com/ZhuJi-255215189/coopanion-world-threads/actions/workflows/ci.yml/badge.svg)](https://github.com/ZhuJi-255215189/coopanion-world-threads/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-2F7D5B.svg)](LICENSE)
+
 > **Threads for Coopanion** — parallel background lanes for the desktop pet, with an always-idle spare. A Cortico World extension (API 6). 中文说明为主，见下。
 
 ![架构](docs/architecture.svg)
@@ -20,6 +23,13 @@ Cortico 的桌宠只有一个「主 session」：主循环一次处理一批事�
 池子的规则见 [DESIGN.md](DESIGN.md)：空闲保底 1 条，两条在忙时开第三条，忙到上限才排队。
 
 ## 安装
+
+0. 拿到代码：下载 [Release zip](https://github.com/ZhuJi-255215189/coopanion-world-threads/releases)（推荐），或：
+
+   ```powershell
+   git clone https://github.com/ZhuJi-255215189/coopanion-world-threads.git
+   cd coopanion-world-threads
+   ```
 
 1. 退出 Coopanion（安装本身不依赖退出，但重启后才会加载新扩展）。
 2. 在本目录运行：

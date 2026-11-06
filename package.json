@@ -25,6 +25,14 @@
   ],
   "author": "coopanion-threads contributors",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ZhuJi-255215189/coopanion-world-threads.git"
+  },
+  "homepage": "https://github.com/ZhuJi-255215189/coopanion-world-threads#readme",
+  "bugs": {
+    "url": "https://github.com/ZhuJi-255215189/coopanion-world-threads/issues"
+  },
   "engines": {
     "node": ">=22"
   },
