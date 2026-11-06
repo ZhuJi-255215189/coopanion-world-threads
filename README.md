@@ -32,28 +32,22 @@ Cortico 的桌宠只有一个「主 session」：主循环一次处理一批事�
    ```
 
 1. 退出 Coopanion（安装本身不依赖退出，但重启后才会加载新扩展）。
-2. 在本目录运行：
+2. 在本目录运行（推荐带 `-Enable`，让它在重启时和其他 World 一起挂载）：
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File scripts/install.ps1
+   powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -Enable
    ```
+
+   `-Enable` 会把 `worlds.threads.enabled` 预先写成 `true`。这样重启时它在启动阶段挂载，不经过运行中激活——运行中激活要等当前回合跑到批末，桌宠正忙时 HTTP 可能先超时（详见下面「启用时机与排障」）。不加 `-Enable` 也可以，装完在扩展页手动打开，尽量挑桌宠空闲的时候。
 
    脚本会自动找 `data\extensions`（先看 `CORTICO_EXTENSIONS_DIR`，再看 `%LOCALAPPDATA%\Coopanion\data-location.json`），把包放进 `.local\coopanion-world-threads` 并复制到 `node_modules\`，再把依赖写进 `extensions\package.json`。
    也可以显式指定：
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -ExtensionsDir "D:\Coopanion-Setup-0.2.8\data\extensions"
+   powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -ExtensionsDir "D:\Coopanion-Setup-0.2.8\data\extensions" -Enable
    ```
 
-3. 重启 Coopanion。
-4. 打开设置 →「扩展」/「World」页，找到 **多线程**，点开启。
-   想让它默认开着，也可以在部署的 `config.json` 里加：
-
-   ```json
-   { "worlds": { "threads": { "enabled": true } } }
-   ```
-
-   然后重启。
+3. 重启 Coopanion。用了 `-Enable` 的话，重启后它已经开着；没加的话，到扩展页把「多线程」打开。
 
 > 说明：依赖写成 `file:./.local/coopanion-world-threads`，包本体在 `.local/`，同时复制一份到 `node_modules/` 供当前装载器读取；以后在 `extensions` 目录跑 `pnpm install` 也能解析到它。更新时重新执行本脚本即可。
 
