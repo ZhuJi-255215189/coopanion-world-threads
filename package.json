@@ -1,0 +1,55 @@
+{
+  "name": "coopanion-world-threads",
+  "version": "0.1.0",
+  "description": "Coopanion 多线程 World：让桌宠同时开几条独立的对话/任务线程，始终留一条空闲线程接新消息；一条在干活时另一条能顺便接话。",
+  "type": "module",
+  "main": "./src/index.ts",
+  "files": [
+    "src",
+    "dist",
+    "scripts",
+    "docs",
+    "describe.json",
+    "README.md",
+    "DESIGN.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "cortico-world",
+    "cortico",
+    "coopanion",
+    "companion",
+    "threads",
+    "concurrency"
+  ],
+  "author": "coopanion-threads contributors",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/pool.test.mjs test/thread.test.mjs test/model.test.mjs",
+    "describe": "node --experimental-strip-types scripts/build-describe.mjs"
+  },
+  "cortico": {
+    "kind": "world",
+    "api": 6,
+    "displayName": "多线程",
+    "describe": "describe.json",
+    "webUiClient": "dist/webui/client.js",
+    "tags": [
+      "companion"
+    ],
+    "locales": {
+      "zh": {
+        "displayName": "多线程",
+        "description": "让桌宠同时开几条独立的对话/任务线程：一条在干活时，另一条还能顺便接话；同时有两件事在跑时自动开第三条；池子始终至少留一条空闲线程接新消息。带一块实时线程池面板。"
+      },
+      "en": {
+        "displayName": "Threads",
+        "description": "Runs several independent conversation/task lanes at once. A spare lane is always kept idle for new messages, another lane opens when two are busy, and a live pool panel shows what each lane is doing."
+      }
+    }
+  }
+}

@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="520" viewBox="0 0 960 520" role="img" aria-labelledby="title desc">
+  <title id="title">coopanion-world-threads 架构</title>
+  <desc id="desc">用户消息到桌宠主 session，主 session 通过 thread_ask 把任务交给 threads World 的线程池；线程并行调用模型，完成后以 threads.report 事件把结果交回主 session，由桌宠开口。</desc>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6B7280"/>
+    </marker>
+    <marker id="arrow-report" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#B45309"/>
+    </marker>
+  </defs>
+
+  <style>
+    .t   { font-family: 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif; }
+    .h1  { font-size: 19px; font-weight: 650; fill: #111827; }
+    .sub { font-size: 12.5px; fill: #6B7280; }
+    .box-h { font-size: 15px; font-weight: 600; fill: #111827; }
+    .box-s { font-size: 12.5px; fill: #4B5563; }
+    .lane { font-size: 13px; font-weight: 600; fill: #111827; }
+    .lane-s { font-size: 11.5px; fill: #6B7280; }
+    .lbl { font-size: 11.5px; fill: #4B5563; }
+    .lbl-warn { font-size: 11.5px; fill: #B45309; }
+    .note { font-size: 12px; fill: #4B5563; }
+  </style>
+
+  <text x="40" y="42" class="t h1">coopanion-world-threads · 一图看懂</text>
+  <text x="40" y="65" class="t sub">主 session 是唯一的嘴；线程在后台并行；结果以事件回来。</text>
+
+  <!-- 用户 -->
+  <rect x="40" y="112" width="158" height="90" rx="10" fill="#F9FAFB" stroke="#D1D5DB"/>
+  <text x="119" y="146" text-anchor="middle" class="t box-h">用户</text>
+  <text x="119" y="170" text-anchor="middle" class="t box-s">气泡 / 语音</text>
+
+  <!-- 主 session -->
+  <rect x="258" y="96" width="232" height="122" rx="10" fill="#E8F5EE" stroke="#2F7D5B"/>
+  <text x="374" y="128" text-anchor="middle" class="t box-h">桌宠 · 主 session</text>
+  <text x="374" y="153" text-anchor="middle" class="t box-s">人格 · 记忆 · 唯一的嘴</text>
+  <text x="374" y="176" text-anchor="middle" class="t box-s">一次处理一批事件</text>
+  <text x="374" y="199" text-anchor="middle" class="t box-s">（空闲时陪你说话）</text>
+
+  <!-- 线程池 -->
+  <rect x="560" y="74" width="360" height="278" rx="12" fill="#EEF4FF" stroke="#3B6FB6"/>
+  <text x="580" y="103" class="t box-h">threads World · 线程池</text>
+  <text x="580" y="121" class="t box-s">空闲保底 1 · 上限 4 · 满了排队</text>
+
+  <rect x="580" y="134" width="320" height="46" rx="8" fill="#DFF3E6" stroke="#2F7D5B"/>
+  <text x="598" y="153" class="t lane">t1 · 空闲（保底）</text>
+  <text x="598" y="171" class="t lane-s">随时接新消息，不派出去</text>
+
+  <rect x="580" y="190" width="320" height="46" rx="8" fill="#FFF1D6" stroke="#B45309"/>
+  <text x="598" y="209" class="t lane">t2 · 在忙 · 任务 A</text>
+  <text x="598" y="227" class="t lane-s">自己的上下文，独立请求</text>
+
+  <rect x="580" y="246" width="320" height="46" rx="8" fill="#FFF1D6" stroke="#B45309"/>
+  <text x="598" y="265" class="t lane">t3 · 在忙 · 任务 B</text>
+  <text x="598" y="283" class="t lane-s">两条在忙时还能再开一条</text>
+
+  <text x="580" y="320" class="t note">排队：任务 C（第 3 件在跑时进来）</text>
+
+  <!-- 模型端点 -->
+  <rect x="560" y="406" width="360" height="72" rx="10" fill="#F3EDFF" stroke="#6B4FA0"/>
+  <text x="740" y="433" text-anchor="middle" class="t box-h">模型端点 · /responses</text>
+  <text x="740" y="456" text-anchor="middle" class="t box-s">DeepSeek / 兼容端点 · 每条线程独立请求</text>
+
+  <!-- 箭头 -->
+  <line x1="198" y1="157" x2="252" y2="157" stroke="#6B7280" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="204" y="148" class="t lbl">消息</text>
+
+  <line x1="490" y1="130" x2="554" y2="130" stroke="#6B7280" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="500" y="121" class="t lbl">派活</text>
+
+  <line x1="554" y1="180" x2="496" y2="180" stroke="#B45309" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrow-report)"/>
+  <text x="500" y="199" class="t lbl-warn">回报</text>
+
+  <line x1="740" y1="352" x2="740" y2="400" stroke="#6B7280" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="752" y="380" class="t lbl">并行模型调用</text>
+
+  <!-- 底注 -->
+  <text x="40" y="470" class="t note">规则：空闲 &gt; 保底 → 复用；否则池子没满 → 开新；满了 → 排队（或 borrow 临时借用保底）。</text>
+  <text x="40" y="492" class="t note">所以两件在跑时池子里是 3 条（2 忙 + 1 闲）；第三件进来会开第 4 条来保住那条空闲。</text>
+</svg>
