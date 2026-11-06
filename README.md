@@ -101,30 +101,26 @@ Cortico 的桌宠只有一个「主 session」：主循环一次处理一批事�
 单元测试（调度器与线程状态机，不联网）：
 
 ```powershell
-cd plugins\coopanion-world-threads
-node --experimental-strip-types --test test/pool.test.mjs test/thread.test.mjs
+cd coopanion-world-threads
+node --experimental-strip-types --test test/pool.test.mjs test/thread.test.mjs test/model.test.mjs
 ```
 
 dry-mount（用 Cortico 自带的检查器构造 World、查工具与面板声明；先切到应用目录，`--import tsx` 才解析得到）：
 
 ```powershell
-$App = 'D:\Coopanion-Setup-0.2.8\resources\app'   # 换成你的安装目录
+$App  = 'D:\Coopanion-Setup-0.2.8\resources\app'   # 换成你的安装目录
+$Exe  = 'D:\Coopanion-Setup-0.2.8\Coopanion.exe'   # 换成你的可执行文件
+$Repo = 'C:\path\to\coopanion-world-threads'       # 换成仓库目录
 cd $App
 $env:ELECTRON_RUN_AS_NODE = '1'
-& 'D:\Coopanion-Setup-0.2.8\Coopanion.exe' `
-  --import tsx `
-  --import "file:///$($App -replace '\\','/')/build/cortico/src/extensions/runtime.ts" `
-  'C:\Users\Administrator\Documents\deepseek-harness\default-workspace\plugins\coopanion-world-threads\scripts\verify.mjs'
+$env:COOPANION_APP = $App
+& $Exe --import tsx --import "file:///$($App -replace '\\','/')/build/cortico/src/extensions/runtime.ts" "$Repo\scripts\verify.mjs"
 ```
 
 端到端（起一个假的 `/responses` 端点，验证派活、排队、回报、插话、存档，不花 token；同样在应用目录下跑）：
 
 ```powershell
-cd $App
-& 'D:\Coopanion-Setup-0.2.8\Coopanion.exe' `
-  --import tsx `
-  --import "file:///$($App -replace '\\','/')/build/cortico/src/extensions/runtime.ts" `
-  'C:\Users\Administrator\Documents\deepseek-harness\default-workspace\plugins\coopanion-world-threads\scripts\e2e.mjs'
+& $Exe --import tsx --import "file:///$($App -replace '\\','/')/build/cortico/src/extensions/runtime.ts" "$Repo\scripts\e2e.mjs"
 ```
 
 ## 目录
